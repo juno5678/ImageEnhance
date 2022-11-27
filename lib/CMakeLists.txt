@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 # Set variables
 set(PROJECT_NAME ImgEnhance_lib)
 set(PROJECT_LANGUAGE C CXX)
-set(PROJECT_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/AGC_lib.h PLT_lib.h)
+set(PROJECT_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/img_enhance.h)
 set(PROJECT_DEPS )
 
 # Compile setting

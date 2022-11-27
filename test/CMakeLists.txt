@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Set variables
-set(PROJECT_NAME AGC_test)
+set(PROJECT_NAME img_enhance_test)
 set(PROJECT_LANGUAGE C CXX)
 set(PROJECT_DEPS ImgEnhance_lib ${OpenCV_LIBS})
 
