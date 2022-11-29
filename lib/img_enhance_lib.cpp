@@ -66,18 +66,30 @@ void AutoLinearTransformation(const cv::Mat &src, cv::Mat &dst, const cv::String
     const int type = src.type();
     assert( type==CV_8UC1 || type==CV_8UC3 );
     int size = 256;
-    auto mean = cv::mean(src);
+//    auto mean = cv::mean(src);
+    cv::Point minIdx[channels],maxIdx[channels];
+    double minValue[channels],maxValue[channels];
+
+    if(channels == 1)
+        cv::minMaxLoc(src, &minValue[0], &maxValue[0], &minIdx[0], &maxIdx[0]);
     if(channels == 3)
-        mean[0] = (mean[0]+mean[1]+mean[2])/3;
+    {
+        std::vector<cv::Mat> BGRchannel;
+        cv::split(src, BGRchannel);
+        cv::minMaxLoc(BGRchannel.at(0), &minValue[0], &maxValue[0], &minIdx[0], &maxIdx[0]);
+        cv::minMaxLoc(BGRchannel.at(1), &minValue[1], &maxValue[1], &minIdx[1], &maxIdx[1]);
+        cv::minMaxLoc(BGRchannel.at(2), &minValue[2], &maxValue[2], &minIdx[2], &maxIdx[2]);
 
-    float range = 0.2;
-    float first_corner_ratio = 1-range;
-    float second_corner_ratio = 1+range;
-    float first_corner_input = mean[0] * first_corner_ratio;
-    float second_corner_input = mean[0] * second_corner_ratio;
-    float first_corner_output = size * (0.5-range/2) - 1;
-    float second_corner_output = size * (0.5+range/2) - 1;
+        minValue[0] = (minValue[0]+minValue[1]+minValue[2])/3;
+        maxValue[0] = (maxValue[0]+maxValue[1]+maxValue[2])/3;
+    }
 
+    float first_corner_input   = minValue[0];
+    float second_corner_input  = maxValue[0];
+    float first_corner_output  = 0 ;
+    float second_corner_output = 255;
+
+    printf("min value : %1f , max value : %1f \n",minValue[0],maxValue[0]);
     // build look up table
     cv::Mat lut(1,256,src.type());
     cv::Mat show_lut = cv::Mat::zeros(size, size, CV_8UC1);
@@ -224,11 +236,12 @@ void AutoLinearTransformation(const cv::Mat &src, cv::Mat &dst, const cv::String
 int linearFormula(int input,float first_corner_input,float second_corner_input,float first_corner_output,float second_corner_output)
 {
     int Y = 0;
+    float epsilon = 0.001;
     if(input < first_corner_input)
-        Y = std::round(first_corner_output / first_corner_input * input);
+        Y = std::round(first_corner_output / first_corner_input * input + epsilon);
     else if( input >= first_corner_input && input < second_corner_input)
     {
-        float m = (second_corner_output - first_corner_output) / (second_corner_input - first_corner_input);
+        float m = (second_corner_output - first_corner_output) / (second_corner_input - first_corner_input +epsilon);
         float b = first_corner_output - m * first_corner_input ;
         Y =  std::round(m * input + b) ;
         //printf(" m : %3f , b : %3f \t",m,b);
@@ -236,7 +249,7 @@ int linearFormula(int input,float first_corner_input,float second_corner_input,f
     }
     else if(input >= second_corner_input)
     {
-        float m = (255 - second_corner_output) / (255 - second_corner_input);
+        float m = (255 - second_corner_output) / (255 - second_corner_input + epsilon);
         float b = second_corner_output - m * second_corner_input ;
         Y =  std::round(m * input + b) ;
         printf(" m : %3f , b : %3f \t",m,b);
