@@ -1,6 +1,7 @@
 build
+*.png
 .cache
-
+under_people.JPG
 # Prerequisites
 *.d
 

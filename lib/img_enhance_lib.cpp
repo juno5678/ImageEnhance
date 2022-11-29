@@ -4,9 +4,11 @@
 
 void AutoGammaCorrection(const cv::Mat &src, cv::Mat &dst, const cv::String windowName)
 {
+    printf("----------------------------start gamma correction------------------------\n");
     const int channels = src.channels();
     const int type = src.type();
     assert( type==CV_8UC1 || type==CV_8UC3 );
+
 
     auto mean = cv::mean(src);
     mean[0] = std::log10(0.5) / std::log10(mean[0]/255); // gamma = -0.3/log10(X)
@@ -54,42 +56,50 @@ void AutoGammaCorrection(const cv::Mat &src, cv::Mat &dst, const cv::String wind
             cv::circle(show_lut,cv::Point(i, size - binValue),1,cv::Scalar(255));
         }
     }
-    printf(" %s's gamma : %3f\n",windowName.c_str(),mean[0]);
+    printf("%s's gamma : %3f\n",windowName.c_str(),mean[0]);
 
     cv::LUT(src, lut, dst);
+
+    cv::Scalar inputMean, outputMean;
+    cv::Scalar inputStdDev, outputStdDev;
+    cv::meanStdDev(src, inputMean, inputStdDev);
+    cv::meanStdDev(dst, outputMean, outputStdDev);
+    printf("input mean : %1f , input stddev : %1f \n",inputMean[0],inputStdDev[0]);
+    printf("output mean : %1f , output stddev : %1f \n",outputMean[0], outputStdDev[0]);
+
     cv::imshow(windowName + "look up table",show_lut);
 }
 
 void AutoLinearTransformation(const cv::Mat &src, cv::Mat &dst, const cv::String windowName)
 {
+    printf("----------------------------start linear transformation------------------------\n");
     const int channels = src.channels();
     const int type = src.type();
     assert( type==CV_8UC1 || type==CV_8UC3 );
     int size = 256;
-//    auto mean = cv::mean(src);
-    cv::Point minIdx[channels],maxIdx[channels];
-    double minValue[channels],maxValue[channels];
 
-    if(channels == 1)
-        cv::minMaxLoc(src, &minValue[0], &maxValue[0], &minIdx[0], &maxIdx[0]);
+    cv::Mat expectArray(1,size,CV_32FC1);
+    cv::Scalar expectMean, inputMean, outputMean;
+    cv::Scalar expectStdDev, inputStdDev, outputStdDev;
+    for(int i = 0 ; i < size ; i++ )
+        expectArray.at<float>(0,i) = i;
+
+    cv::meanStdDev(expectArray, expectMean, expectStdDev);
+    cv::meanStdDev(src, inputMean, inputStdDev);
+
     if(channels == 3)
     {
-        std::vector<cv::Mat> BGRchannel;
-        cv::split(src, BGRchannel);
-        cv::minMaxLoc(BGRchannel.at(0), &minValue[0], &maxValue[0], &minIdx[0], &maxIdx[0]);
-        cv::minMaxLoc(BGRchannel.at(1), &minValue[1], &maxValue[1], &minIdx[1], &maxIdx[1]);
-        cv::minMaxLoc(BGRchannel.at(2), &minValue[2], &maxValue[2], &minIdx[2], &maxIdx[2]);
-
-        minValue[0] = (minValue[0]+minValue[1]+minValue[2])/3;
-        maxValue[0] = (maxValue[0]+maxValue[1]+maxValue[2])/3;
+        inputMean[0] = (inputMean[0]+inputMean[1]+inputMean[2])/3;
+        inputStdDev[0] = (inputStdDev[0]+inputStdDev[1]+inputStdDev[2])/3;
     }
 
-    float first_corner_input   = minValue[0];
-    float second_corner_input  = maxValue[0];
-    float first_corner_output  = 0 ;
-    float second_corner_output = 255;
+    float first_corner_input   = cv::saturate_cast<uchar>(inputMean[0] - inputStdDev[0]);
+    float second_corner_input  = cv::saturate_cast<uchar>(inputMean[0] + inputStdDev[0]);
+    float first_corner_output  = cv::saturate_cast<uchar>(expectMean[0] - expectStdDev[0]);
+    float second_corner_output = cv::saturate_cast<uchar>(expectMean[0] + expectStdDev[0]);
 
-    printf("min value : %1f , max value : %1f \n",minValue[0],maxValue[0]);
+    printf("input mean : %1f , input stddev : %1f \n",inputMean[0],inputStdDev[0]);
+    printf("expect mean : %1f , expect stddev : %1f \n",expectMean[0], expectStdDev[0]);
     // build look up table
     cv::Mat lut(1,256,src.type());
     cv::Mat show_lut = cv::Mat::zeros(size, size, CV_8UC1);
@@ -103,9 +113,6 @@ void AutoLinearTransformation(const cv::Mat &src, cv::Mat &dst, const cv::String
             int Y = linearFormula(i,first_corner_input,second_corner_input,first_corner_output,second_corner_output);
             binValue = cv::saturate_cast<uchar>(Y);
             lut.at<uchar>(0,i) = binValue;
-            cv::circle(show_lut,cv::Point(i, size - binValue),1,cv::Scalar(125));
-            cv::circle(show_lut,cv::Point(first_corner_input, size - first_corner_output),1,cv::Scalar(255));
-            cv::circle(show_lut,cv::Point(second_corner_input, size - second_corner_output),1,cv::Scalar(255));
         }
     }
     else if(channels == 3)
@@ -115,124 +122,25 @@ void AutoLinearTransformation(const cv::Mat &src, cv::Mat &dst, const cv::String
             int Y = linearFormula(i,first_corner_input,second_corner_input,first_corner_output,second_corner_output);
             binValue = cv::saturate_cast<uchar>(Y);
             lut.at<cv::Vec3b>(0,i) = cv::Vec3b(binValue,binValue,binValue);
-
-            cv::circle(show_lut,cv::Point(i, size - binValue),1,cv::Scalar(125));
-            cv::circle(show_lut,cv::Point(first_corner_input, size - first_corner_output),1,cv::Scalar(255));
-            cv::circle(show_lut,cv::Point(second_corner_input, size - second_corner_output),1,cv::Scalar(255));
         }
     }
+    cv::line(show_lut,cv::Point(0,size),cv::Point(first_corner_input, size - first_corner_output),cv::Scalar(127),1);
+    cv::line(show_lut,cv::Point(first_corner_input, size - first_corner_output),cv::Point(second_corner_input, size - second_corner_output),cv::Scalar(127),1);
+    cv::line(show_lut,cv::Point(second_corner_input, size - second_corner_output),cv::Point(size,0),cv::Scalar(127),1);
+    cv::circle(show_lut,cv::Point(first_corner_input, size - first_corner_output),1,cv::Scalar(255));
+    cv::circle(show_lut,cv::Point(second_corner_input, size - second_corner_output),1,cv::Scalar(255));
 
-    printf(" %s's linear transform : P1( %d , %d ) P2( %d , %d ) \n",windowName.c_str(),(int)first_corner_input,(int)first_corner_output,(int)second_corner_input,(int)second_corner_output);
+
 
     cv::LUT(src, lut, dst);
-    cv::imshow(windowName + "look up table",show_lut);
 
+    cv::meanStdDev(dst, outputMean, outputStdDev);
+    printf("output mean : %1f , output stddev : %1f \n",outputMean[0], outputStdDev[0]);
+    printf("%s's linear transform : P1( %d , %d ) P2( %d , %d ) \n",windowName.c_str(),(int)first_corner_input,(int)first_corner_output,(int)second_corner_input,(int)second_corner_output);
 
+    cv::imshow(windowName + " look up table",show_lut);
 
 }
-//void AutoLinearTransformation(const cv::Mat &src, cv::Mat &dst, const cv::String windowName)
-//{
-//    const int channels = src.channels();
-//    const int type = src.type();
-//    assert( type==CV_8UC1 || type==CV_8UC3 );
-//
-//    int size = 256;
-//
-//    std::vector<std::vector<float>> pixel_pdf(channels,std::vector<float>(size,0));
-//    std::vector<std::vector<float>> pixel_cdf(channels,std::vector<float>(size,0));
-//    // count each pixel value number
-//    for(int i = 0 ; i < src.rows; i ++)
-//    {
-//        for(int j = 0 ; j < src.cols ; j++)
-//        {
-//            for(int c = 0 ; c < channels ; c++)
-//            {
-//                int value = src.at<cv::Vec3b>(i,j)[c];
-//                pixel_pdf.at(c).at(value) += 1;
-//            }
-//        }
-//    }
-//
-//    // calculate pdf and cdf
-//    // find two corner input value
-//    float accumulation_p[channels] = {0};
-//    float first_corner_input[channels] = {0};
-//    float second_corner_input[channels] = {0};
-//    bool find_first_corner[channels] = {false};
-//    bool find_second_corner[channels] = {false};
-//
-//    float first_corner_ratio = 0.25;
-//    float second_corner_ratio = 0.5;
-//    for(int c = 0 ; c < channels ; c++)
-//    {
-//        for(int k = 0 ; k < size ; k++)
-//        {
-//            pixel_pdf.at(c).at(k) = pixel_pdf.at(c).at(k) / (src.rows*src.cols);
-//            accumulation_p[c] += pixel_pdf.at(c).at(k);
-//
-//            pixel_cdf.at(c).at(k) = accumulation_p[c];
-//
-//            if(find_first_corner[c] == false && accumulation_p[c] >= first_corner_ratio)
-//            {
-//                first_corner_input[c] = k;
-//                find_first_corner[c] = true;
-//            }
-//            if(find_second_corner[c] == false && accumulation_p[c] >= second_corner_ratio)
-//            {
-//                second_corner_input[c] = k;
-//                find_second_corner[c] = true;
-//            }
-//        }
-//    }
-//    if(channels == 3)
-//    {
-//        first_corner_input[0] = (first_corner_input[0]+first_corner_input[1]+first_corner_input[2])/3;
-//        second_corner_input[0] = (second_corner_input[0]+second_corner_input[1]+second_corner_input[2])/3;
-//    }
-//
-//
-//    float first_corner_output =  size * first_corner_ratio - 1;
-//    float second_corner_output = size * second_corner_ratio - 1;
-//    //float first_corner_output =  size * 0.25 - 1;
-//    //float second_corner_output = size * 0.75 - 1;
-//
-//    // build look up table
-//    cv::Mat lut(1,256,src.type());
-//    cv::Mat show_lut = cv::Mat::zeros(size, size, CV_8UC1);
-//
-//    // use look up table to transform input
-//    float binValue = 0;
-//    if(channels == 1)
-//    {
-//        for(int i = 0 ; i < size ; i++)
-//        {
-//            int Y = linearFormula(i,first_corner_input[0],second_corner_input[0],first_corner_output,second_corner_output);
-//            binValue = cv::saturate_cast<uchar>(Y);
-//            lut.at<uchar>(0,i) = binValue;
-//            cv::circle(show_lut,cv::Point(i, size - binValue),1,cv::Scalar(125));
-//            cv::circle(show_lut,cv::Point(first_corner_input[0], size - first_corner_output),1,cv::Scalar(255));
-//            cv::circle(show_lut,cv::Point(second_corner_input[0], size - second_corner_output),1,cv::Scalar(255));
-//        }
-//    }
-//    else if(channels == 3)
-//    {
-//        for(int i = 0 ; i < size ; i++)
-//        {
-//            int Y = linearFormula(i,first_corner_input[0],second_corner_input[0],first_corner_output,second_corner_output);
-//            binValue = cv::saturate_cast<uchar>(Y);
-//            lut.at<cv::Vec3b>(0,i) = cv::Vec3b(binValue,binValue,binValue);
-//
-//            cv::circle(show_lut,cv::Point(i, size - binValue),1,cv::Scalar(125));
-//            cv::circle(show_lut,cv::Point(first_corner_input[0], size - first_corner_output),1,cv::Scalar(255));
-//            cv::circle(show_lut,cv::Point(second_corner_input[0], size - second_corner_output),1,cv::Scalar(255));
-//        }
-//    }
-//
-//    printf(" %s's linear transform : P1( %d , %d ) P2( %d , %d ) \n",windowName.c_str(),(int)first_corner_input[0],(int)first_corner_output,(int)second_corner_input[0],(int)second_corner_output);
-//
-//    cv::LUT(src, lut, dst);
-//    cv::imshow(windowName + "look up table",show_lut);
-//}
 int linearFormula(int input,float first_corner_input,float second_corner_input,float first_corner_output,float second_corner_output)
 {
     int Y = 0;
@@ -252,8 +160,8 @@ int linearFormula(int input,float first_corner_input,float second_corner_input,f
         float m = (255 - second_corner_output) / (255 - second_corner_input + epsilon);
         float b = second_corner_output - m * second_corner_input ;
         Y =  std::round(m * input + b) ;
-        printf(" m : %3f , b : %3f \t",m,b);
-        printf(" linar transform ( %d , %d )\n",input,Y);
+        //printf(" m : %3f , b : %3f \t",m,b);
+        //printf(" linar transform ( %d , %d )\n",input,Y);
     }
     return Y;
 }
@@ -290,16 +198,6 @@ void draw_hist(cv::Mat &src, const cv::String windowName)
             else if(channels == 3)
             {
                 cv::line(dstImage,cv::Point(j*size+i, size - 1),cv::Point(j*size+i, size - realValue),color[j+1]);
-                if(windowName == "src_hist")
-                {
-                    if(i == 30 || i == 250)
-                        cv::line(dstImage,cv::Point(j*size+i, size - 1),cv::Point(j*size+i, size - realValue),cv::Scalar(255,255,0));
-                }
-                else if(windowName == "dst_hist")
-                {
-                    if(i == 83 || i == 250)
-                        cv::line(dstImage,cv::Point(j*size+i, size - 1),cv::Point(j*size+i, size - realValue),cv::Scalar(255,255,0));
-                }
 
             }
 

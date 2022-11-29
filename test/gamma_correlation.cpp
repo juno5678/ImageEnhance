@@ -31,7 +31,7 @@ int main(int argc,char **argv)
     draw_hist(src,"src_hist");
     draw_hist(dst,"dst_hist");
     draw_hist(gray,"gray_hist");
-    draw_hist(gray_dst,"grat_dst_hist");
+    draw_hist(gray_dst,"gray_dst_hist");
 
     cv::imshow("src",src);
     cv::imshow("gray",gray);
